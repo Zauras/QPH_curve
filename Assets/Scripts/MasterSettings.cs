@@ -15,6 +15,9 @@ namespace Master {
 
         public float[] TList = { 0.0f, 2.0f, 4.0f };
 
+        public float lemda1 = 1.0f;
+        public float lemda2 = 1.0f;
+
 
         public Rect playfield = new Rect { x = -30.0f, y = -30.0f, width = 60.0f, height = 60.0f };
 
