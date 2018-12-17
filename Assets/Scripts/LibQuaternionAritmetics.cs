@@ -1,12 +1,26 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using System;
 using UnityEngine;
 using Unity.Mathematics;
 using static Unity.Mathematics.math;
+using MathNet.Numerics.Integration;
+using MathNet.Numerics.LinearAlgebra;
 
 namespace Master
 {
-	public sealed class LibQuaternionAritmetics
+    using m = Unity.Mathematics.math;
+
+
+    public struct float4Matrix
+    {
+        public float4Matrix(float4 r0, float4 r1, float4 r2, float4 r3) : this() {
+            this.r0 = r0; this.r1 = r1; this.r2 = r2; this.r3 = r3;
+        }
+        public float4 r0, r1, r2, r3;
+    }
+
+    public sealed class LibQuaternionAritmetics
 	{
 		public static LibQuaternionAritmetics H;
 
@@ -23,73 +37,176 @@ namespace Master
         public static float4 jjfm = new float4(0f, 0f, 1f, 0f);
         public static float4 kkfm = new float4(0f, 0f, 0f, 1f);
 
-
-        public static float4 Bezier(float t, float4 A0, float4 A1, float4 A2)
+        public static float3 Integral(float4[] cp, float tOld, float tNew)
         {
-            float delta = 1f - t;
+            float intX = (float) SimpsonRule.IntegrateThreePoint(x =>
+                    cp[0].x * m.pow(1 - x, 4)
+                    + 4f * cp[1].x * x * m.pow(1 - x, 3)
+                    + 6f * cp[2].x * m.pow(x, 2) * m.pow(1 - x, 2)
+                    + 4f * cp[3].x * m.pow(x, 4),
+                tOld, tNew);
 
-            float4 integral = math.pow(delta, 5f) / 5f * A0 +
-                           math.pow(delta, 4f) * A0 +
+            float intY = (float) SimpsonRule.IntegrateThreePoint(x =>
+                    cp[0].y * m.pow(1 - x, 4)
+                    + 4f * cp[1].y * x * m.pow(1 - x, 3)
+                    + 6f * cp[2].y * m.pow(x, 2) * m.pow(1 - x, 2)
+                    + 4f * cp[3].y * m.pow(x, 4),
+                tOld, tNew);
 
-                           4f * math.pow(delta, 4f) * t * A1 + // cia laipsnis 3 arba 4
-                           6f * math.pow(delta, 2f) * math.pow(t, 2f) * A1 +
-                           4f * math.pow(delta, 3f) * A0 +
-                           math.pow(t, 4f) * A2 +
-                           math.pow(delta, 5f) * A0 +
-                           5f * math.pow(delta, 4f) * t * A1;
+            float intZ = (float) SimpsonRule.IntegrateThreePoint(x =>
+                    cp[0].z * m.pow(1 - x, 4)
+                    + 4f * cp[1].z * x * m.pow(1 - x, 3)
+                    + 6f * cp[2].z * m.pow(x, 2) * m.pow(1 - x, 2)
+                    + 4f * cp[3].z * m.pow(x, 4),
+                tOld, tNew);
 
-            float4 bezierPoint = math.pow(delta, 2f) * A0
-                                + 2f * delta * t * A1
-                                + math.pow(t, 2f) * A2;
-
-            
-            var point = integral / 5f;
-            var hod = StarDub(point);
-
-            return hod;
+           return new float3(intX, intY, intZ);
         }
-        /*
-         * https://github.com/regebro/svg.path/issues/15
-        A polynomial function is one that can be written in the form:
 
-f(x) = a_n x^n + a_n−1 x^(n−1) + . . . + a_2 x^2 + a_1 x + a_0
-Where a_0 through a_n are constants.
+        public static float4Matrix MulPQ (float4 p)
+        {
+            return new float4Matrix(
+                new float4 ( p.x, -p.y, -p.z, -p.w ),
+                new float4 ( p.y,  p.x, -p.w,  p.z ),
+                new float4 ( p.z,  p.w,  p.x, -p.y ),
+                new float4 ( p.w, -p.z,  p.y,  p.x )         
+            );     
+        }
 
-The cubic Bezier curve function looks like this:
+      
+        public static float4Matrix MulQP(float4 p)
+        {
+            return new float4Matrix(
+                new float4(p.x, -p.y, -p.z, -p.w ),
+                new float4(p.y,  p.x,  p.w, -p.z ),
+                new float4(p.z, -p.w,  p.x,  p.y ),
+                new float4(p.w,  p.z, -p.y,  p.x )
+            );
+        }
 
-f(x) = A(1 - x) ^ 3 + 3B(1 - x)^2 x + 3C(1 - x) x^2 + Dx^3
-Where A, B, C and D are the control points and, for the purpose of evaluating an instance of the Bezier curve, are constants.Multiplying everything out and collecting terms yields the expanded polynomial form:
+        public static float4Matrix SubMatrix(float4Matrix m1, float4Matrix m2)
+        {
+            return new float4Matrix(
+                Round (new float4(m1.r0.x - m2.r0.x, m1.r0.y - m2.r0.y, m1.r0.z - m2.r0.z, m1.r0.w - m2.r0.w)),
+                Round (new float4(m1.r1.x - m2.r1.x, m1.r1.y - m2.r1.y, m1.r1.z - m2.r1.z, m1.r1.w - m2.r1.w)),
+                Round (new float4(m1.r2.x - m2.r2.x, m1.r2.y - m2.r2.y, m1.r2.z - m2.r2.z, m1.r2.w - m2.r2.w)),
+                Round (new float4(m1.r3.x - m2.r3.x, m1.r3.y - m2.r3.y, m1.r3.z - m2.r3.z, m1.r3.w - m2.r3.w))
+            );
+        }
 
-f(x) = (-A + 3B -3C + D)x^3 + (3A - 6B + 3C)x^2 + (-3A + 3B)x + A
-If we say:
+        public static float4 Bezier(float t, float4[] cp, float4[] icp)
+        {
+            float delta = -1*(t - 1);
+            //float4 bezierPoint = math.pow(delta, 2f) * A0 + 2f * delta * t * A1 + math.pow(t, 2f) * A2;
+            float bern40 = m.pow(delta, 4f);
+            float bern41 = 4f * t * m.pow(delta, 3f);
+            float bern42 = 6f * m.pow(t, 2f) * m.pow(delta, 2f);
+            float bern43 = 4f * m.pow(t, 3f) * delta;
+            float bern44 = m.pow(t, 4f);
 
-a = -A + 3B - 3C + D
-b = 3A - 6B + 3C
-c = -3A + 3B
-d = A
-Then we have the expanded polynomal:
+            float bern50 = m.pow(delta, 5f);
+            float bern51 = 5f * t * m.pow(delta, 4f);
+            float bern52 = 10f * m.pow(t, 2f) * m.pow(delta, 3f);
+            float bern53 = 10f * m.pow(t, 3f) * m.pow(delta, 2f);
+            float bern54 = 5f * m.pow(t, 4f) * delta;
+            float bern55 = m.pow(t, 5f);
 
-f(x) = ax^3 + bx^2 + cx + d
-Whos indefinite integral is:
+            if (t == 0.5f)
+            {
+                Debug.Log(bern50);
+                Debug.Log(bern51);
+                Debug.Log(bern52);
+                Debug.Log(bern53);
+                Debug.Log(bern54);
+                Debug.Log(bern55);
+            }
 
-a/4 x^4 + b/3 x^3 + c/2 x^2 + dx + E
-Where E is a new constant introduced by integration.
+            float4 point = cp[0] * bern40 +
+                            cp[1] * bern41 +
+                            cp[2] * bern42 +
+                            cp[3] * bern43 +
+                            cp[4] * bern42;
 
-The indefinite integral of the quadratic Bezier curve is:
+            float4 point2 = icp[0] * bern50 +
+                            icp[1] * bern51 +
+                            icp[2] * bern52 +
+                            icp[3] * bern53 +
+                            icp[4] * bern54 +
+                            icp[5] * bern55;
+            return point2;
+        }
 
-(-A + 3B - 3C + D)/4 x^4 + (A - 2B + C) x^3 + 3/2 (B - A) x^2 + Ax + E
-So it is possible to integrate a cubic Bezier but this gives you the area under the curve not the length of the curve.See: http://math.stackexchange.com/questions/922098/arc-length-of-general-polynomial
-*/
 
-        public static float4 ClampToZero(float4 h)
+        public static float4 Round(float4 h)
         {
             float x, y, z, w;
-            float max = 0.000001f, min = -0.000001f;
+            float max = 0.00001f, min = -0.00001f;
             if (h.x < max && h.x > min) x = 0f; else x = h.x;
             if (h.y < max && h.y > min) y = 0f; else y = h.y;
             if (h.z < max && h.z > min) z = 0f; else z = h.z;
             if (h.w < max && h.w > min) w = 0f; else w = h.w;
             return new float4(x, y, z, w);
+
+            // return new float4(
+            //     (float) Math.Round(h.x, 7),
+            //     (float) Math.Round(h.y, 7),
+            //    (float) Math.Round(h.z, 7),
+            //    (float) Math.Round(h.w, 7));
+
+           // return h;
+        }
+
+        public static float4 Solve(float4Matrix[] mArr)
+        {
+            float4 r0 = new float4(), r1 = new float4(), r2 = new float4(), r3 = new float4();
+            bool sol1 = false, sol2 = false;
+
+            for (int i = 0; i < mArr.Length-1; i++)
+            {
+                if (!isZero(mArr[i].r0) & !isZero(mArr[i].r0))
+                {
+                    r0 = mArr[i].r0;
+                    r1 = mArr[i].r1;
+                    sol1 = true;
+                }
+                for (int j = 0; j < mArr.Length; j++)
+                {
+                    if (!isZero(mArr[j].r2) & !isZero(mArr[j].r3))
+                    {
+                        r2 = mArr[j].r2;
+                        r3 = mArr[j].r3;
+                        sol2 = true;
+                    }
+                    if (sol1 && sol2)
+                    {
+                        Matrix<float> mtrx = Matrix<float>.Build.DenseOfArray(new float[,] {
+                            { r0.x, r0.y, r0.z, r0.w },
+                            { r1.x, r1.y, r1.z, r1.w },
+                            { r2.x, r2.y, r2.z, r2.w },
+                            { r3.x, r3.y, r3.z, r3.w },
+                        });
+                        var kernel = mtrx.Kernel();
+                        
+                        if (kernel.Length > 0)
+                        {
+                            for(int k=0; k < kernel.Length; k++)
+                            {
+                               float x = kernel[k][1];
+                               if (kernel[k][0] != 0 && kernel[k][1] != 0 && kernel[k][2] != 0 && kernel[k][3] != 0)
+                                    return new float4(kernel[k][0], kernel[k][1], kernel[k][2], kernel[k][3]);   
+                            }
+                        }
+                    }        
+                }
+            }
+            return new Unity.Mathematics.float4();
+
+        }
+
+        public static bool isZero (float4 f)
+        {
+            if (f.x == 0f && f.y==0f && f.z==0f && f.w==0f) return true;
+            return false;
         }
 
         public static float4 GetDelta(float4 iPoint, float4 jPoint)
@@ -107,6 +224,7 @@ So it is possible to integrate a cubic Bezier but this gives you the area under 
             return StarOpr(a, a);
         }
 
+        /*
         public static quaternion Unit(quaternion a)
         {
             // make it norm of one
@@ -118,6 +236,7 @@ So it is possible to integrate a cubic Bezier but this gives you the area under 
             // make it norm of one
             return a;
         }
+        */
 
         public static float4 Mult (float4 a, float4 b) {
 			float w = (b.w*a.w - b.x*a.x - b.y*a.y - b.z*a.z);
@@ -126,15 +245,6 @@ So it is possible to integrate a cubic Bezier but this gives you the area under 
 			float z = (b.w*a.z - b.x*a.y + b.y*a.x + b.z*a.w);
 			return new float4 (x, y, z, w);
 		}
-
-        public static float4 MultM(float4 a, float4 b)
-        {
-            float w = (b.w * a.w - b.x * a.x - b.y * a.y - b.z * a.z);
-            float x = (b.w * a.x + b.x * a.w - b.y * a.z + b.z * a.y);
-            float y = (b.w * a.y + b.x * a.z + b.y * a.w - b.z * a.x);
-            float z = (b.w * a.z - b.x * a.y + b.y * a.x + b.z * a.w);
-            return new float4(x, y, z, w);
-        }
 
         public static quaternion Mult(quaternion a, quaternion b)
         {
@@ -173,8 +283,8 @@ So it is possible to integrate a cubic Bezier but this gives you the area under 
 		}
 
 
-		public static float4 Abs(float4 quaternion) {
-			
+		public static float4 Abs(float4 quaternion)
+        {
 			float xx = math.sqrt (quaternion.x * quaternion.x);
 			float yy = math.sqrt (quaternion.y * quaternion.y);
 			float zz = math.sqrt (quaternion.z * quaternion.z);
@@ -197,14 +307,21 @@ So it is possible to integrate a cubic Bezier but this gives you the area under 
 		}
 
 		public static float4 Invers(float4 q) { // Quaternion Invers
-			float n = q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w;
+			float n = QuatLength(q);
 			return new float4(-1.0f*q.x/n, -1.0f*q.y/n, -1.0f*q.z/n, q.w/n);
-			//Quaternion quat = new Quaternion(q.x, q.y, q.z, q.w);
-			//quat = Quaternion.Inverse(quat);
-			//return new Vector4(quat.x, quat.y, quat.z, quat.w);
 		}
 
-		public static float4 Norm(float4 quaternion) {
+        public static float QuatLength(float4 q)
+        { // Quaternion Length
+            return q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+        }
+
+        public static float QuatLength(quaternion q)
+        { // Quaternion Length
+            return q.value.x * q.value.x + q.value.y * q.value.y + q.value.z * q.value.z + q.value.w * q.value.w;
+        }
+
+        public static float4 Norm(float4 quaternion) {
 			float4 normalizedQuat = Div(quaternion, Abs(quaternion));
 			return normalizedQuat;
 		}
@@ -217,7 +334,7 @@ So it is possible to integrate a cubic Bezier but this gives you the area under 
 
         public static quaternion Rotation(quaternion quaternionT, float angle ) {
 			//if (angle > 720) { } Apsauga, kad angle == [0,720];
-			Vector4 quat = Convert_Quat_toVec4(quaternionT);
+			Vector4 quat = QuatToFloat4(quaternionT);
 
 			Vector4 normQuat = Norm(quat);
 			float magnitude = quat.sqrMagnitude;
@@ -228,17 +345,32 @@ So it is possible to integrate a cubic Bezier but this gives you the area under 
 			Vector4 rotationQuat = new Vector4 (unitQuatRot.x, unitQuatRot.y, unitQuatRot.z, Mathf.Cos(angle/2.0f)); // x,y,z,w
 		
 			Vector4 rotetedQuat = Mult(Mult(rotationQuat, quat), Invers(quat));
-			return Convert_Vec4_toQuat(rotetedQuat);;
+			return Float4ToQuat(rotetedQuat);;
 		}
 
-		public static float4 Convert_Quat_toVec4(quaternion q) {
+		public static float4 QuatToFloat4(quaternion q) {
 			return new float4(q.value.x, q.value.y, q.value.z, q.value.w);
 		}
 
-		public static quaternion Convert_Vec4_toQuat(float4 vec4) {
+		public static quaternion Float4ToQuat(float4 vec4) {
 			return new quaternion(vec4.x, vec4.y, vec4.z, vec4.w);
 		}
 
-	}
+        public static float4 TransformToQWYZ(float4 vec4)
+        {
+            return new float4(vec4.w, vec4.x, vec4.y, vec4.z);
+        }
+
+        public static Matrix<float> BuildMatrix (float4Matrix m)
+        {
+            return Matrix<float>.Build.DenseOfArray(new float[,] {
+                    { m.r0.x, m.r0.y, m.r0.z, m.r0.w },
+                    { m.r1.x, m.r1.y, m.r1.z, m.r1.w },
+                    { m.r2.x, m.r2.y, m.r2.z, m.r2.w },
+                    { m.r3.x, m.r3.y, m.r3.z, m.r3.w },
+                });
+        }
+
+    }
 
 }
